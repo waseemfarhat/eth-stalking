@@ -100,11 +100,22 @@ export async function depositPolicy() {
   const cfg = chainConfig();
   const wallet = await getActiveReceivingWallet();
   if (cfg.mode === 'mainnet') {
+    if (localRealTestActive()) {
+      return {
+        mode: cfg.mode,
+        accepting: !!wallet,
+        realFunds: true,
+        localTest: true,
+        reason: wallet ? null : 'Verify and activate the receiving wallet (Admin → Wallets & compliance) to start accepting deposits.',
+        wallet,
+      };
+    }
     const gate = await complianceStatus();
     return {
       mode: cfg.mode,
       accepting: gate.realDepositsEnabled,
       realFunds: true,
+      localTest: false,
       reason: gate.realDepositsEnabled ? null : 'Real deposits are not enabled on this platform yet. Do not send funds.',
       wallet: gate.realDepositsEnabled ? wallet : null,
     };
@@ -113,7 +124,24 @@ export async function depositPolicy() {
     mode: cfg.mode,
     accepting: !!wallet,
     realFunds: false,
+    localTest: false,
     reason: wallet ? null : 'No verified receiving wallet is configured for this network.',
     wallet,
   };
+}
+
+/**
+ * LOCAL REAL-MONEY TEST MODE
+ * Real mainnet USDT deposits for the operator's own testing on their own computer.
+ * Active only when: LOCAL_REAL_TEST=true, CHAIN_MODE=mainnet, and NODE_ENV is not production.
+ * The server then binds to 127.0.0.1 and rejects every request that is not from this machine
+ * (see localOnlyGuard), and per-deposit / total credit caps apply.
+ */
+export function localRealTestActive() {
+  return env.LOCAL_REAL_TEST && env.NODE_ENV !== 'production' && chainConfig().mode === 'mainnet';
+}
+
+export function localRealTestLimits() {
+  const toUnits = (s: string) => BigInt(Math.round(Number(s) * 1e6));
+  return { maxDeposit: toUnits(env.LOCAL_REAL_TEST_MAX_DEPOSIT), maxTotal: toUnits(env.LOCAL_REAL_TEST_MAX_TOTAL) };
 }

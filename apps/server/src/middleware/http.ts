@@ -67,3 +67,25 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   console.error(err);
   res.status(500).json({ error: { code: 'INTERNAL', message: 'Internal server error' } });
 }
+
+const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * In LOCAL REAL-MONEY TEST MODE the app must only be usable from this computer:
+ * the TCP peer must be loopback, the Host must be localhost, and the request must not
+ * have passed through a proxy or tunnel (which would add forwarding headers).
+ */
+export function localOnlyGuard(isActive: () => boolean) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!isActive()) return next();
+    const host = String(req.headers.host ?? '').replace(/:\d+$/, '').toLowerCase();
+    const peer = req.socket.remoteAddress ?? '';
+    const proxied = ['x-forwarded-for', 'x-forwarded-host', 'forwarded', 'cf-connecting-ip', 'x-real-ip'].some((h) => req.headers[h] !== undefined);
+    if (!LOOPBACK_IPS.has(peer) || !LOCAL_HOSTNAMES.has(host) || proxied) {
+      res.status(403).type('text/plain').send('This app is running in local test mode and is only accessible from the computer it runs on.');
+      return;
+    }
+    next();
+  };
+}

@@ -2,7 +2,7 @@
   "name": "eth-stalking",
   "private": true,
   "version": "0.1.0",
-  "description": "ETH STALKING \u2014 USDT deposit verification, internal ledger, admin-managed staking records and rewards (local development build)",
+  "description": "ETH STALKING — USDT deposit verification, internal ledger, admin-managed staking records and rewards (local development build)",
   "workspaces": [
     "apps/server",
     "apps/web"
@@ -25,7 +25,8 @@
     "db:export": "npm run db:export -w apps/server",
     "db:import": "npm run db:import -w apps/server --",
     "host": "node scripts/host.mjs",
-    "db:rotate-passwords": "npm run db:rotate-passwords -w apps/server"
+    "db:rotate-passwords": "npm run db:rotate-passwords -w apps/server",
+    "local-real": "node scripts/local-real.mjs"
   },
   "engines": {
     "node": ">=20"

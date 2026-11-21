@@ -37,6 +37,13 @@ const schema = z.object({
 
   REAL_DEPOSITS_ENABLED: bool(false),
   COMPLIANCE_ATTESTATION_PATH: z.string().default('../../compliance/attestation.json'),
+
+  // LOCAL REAL-MONEY TEST MODE — mainnet deposits on THIS computer only (see docs/LOCAL_REAL_TEST.md).
+  // Never active in production, never reachable from the network, capped amounts.
+  LOCAL_REAL_TEST: bool(false),
+  LOCAL_REAL_TEST_MAX_DEPOSIT: z.string().default('100'),
+  LOCAL_REAL_TEST_MAX_TOTAL: z.string().default('500'),
+  HOST: z.string().default('0.0.0.0'),
 });
 
 const parsed = schema.safeParse(process.env);

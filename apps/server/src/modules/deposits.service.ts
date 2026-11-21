@@ -1,6 +1,6 @@
 import type { Deposit } from '@prisma/client';
 import { chainConfig, env } from '../config/env.js';
-import { complianceStatus, depositPolicy } from '../config/compliance.js';
+import { complianceStatus, depositPolicy, localRealTestActive, localRealTestLimits } from '../config/compliance.js';
 import { getMinConfirmations, getSetting, setSetting } from '../config/settings.js';
 import { getChainProvider, inspectTransfer } from '../chain/service.js';
 import { TX_HASH_RE } from '../chain/types.js';
@@ -265,7 +265,8 @@ export async function approveDeposit(actor: Actor, depositId: string, note?: str
   await refreshDeposit(depositId);
 
   const cfg = chainConfig();
-  if (cfg.mode === 'mainnet') {
+  const localTest = localRealTestActive();
+  if (cfg.mode === 'mainnet' && !localTest) {
     const gate = await complianceStatus();
     if (!gate.realDepositsEnabled) throw new AppError(403, 'COMPLIANCE_GATE_CLOSED', 'Real deposits are disabled by the compliance gate');
   }
@@ -283,6 +284,15 @@ export async function approveDeposit(actor: Actor, depositId: string, note?: str
     if (d.isSample !== (cfg.mode !== 'mainnet')) throw conflict('MODE_MISMATCH', 'Sample/testnet deposits cannot be credited in this mode');
     const user = await tx.user.findUniqueOrThrow({ where: { id: d.userId } });
     if (user.status !== 'ACTIVE') throw conflict('USER_SUSPENDED', 'Account is suspended');
+
+    if (localTest) {
+      const { maxDeposit, maxTotal } = localRealTestLimits();
+      if (bt.amount > maxDeposit) throw conflict('LOCAL_TEST_LIMIT', `Local test mode: a single deposit can be at most ${formatAmount(maxDeposit)} USDT`);
+      // only real (non-sample) deposits count toward the local-test total
+      const credited = await tx.deposit.aggregate({ where: { status: S.APPROVED, isSample: false }, _sum: { amount: true } });
+      const creditedSoFar = credited._sum.amount ?? 0n;
+      if (creditedSoFar + bt.amount > maxTotal) throw conflict('LOCAL_TEST_LIMIT', `Local test mode: total credited deposits are limited to ${formatAmount(maxTotal)} USDT`);
+    }
 
     const creditRef = creditRefOf(bt.chainId, bt.txHash, bt.logIndex);
     const journal = await post(tx, {

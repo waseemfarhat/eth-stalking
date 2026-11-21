@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getAddress } from 'ethers';
 import { chainConfig } from '../config/env.js';
-import { depositPolicy } from '../config/compliance.js';
+import { depositPolicy, localRealTestLimits } from '../config/compliance.js';
 import { getMinConfirmations } from '../config/settings.js';
 import { h } from '../middleware/http.js';
 
@@ -19,6 +19,8 @@ publicRouter.get(
       deposits: {
         accepting: policy.accepting,
         realFunds: policy.realFunds,
+        localTest: policy.localTest,
+        limits: policy.localTest ? { maxDeposit: localRealTestLimits().maxDeposit, maxTotal: localRealTestLimits().maxTotal } : null,
         reason: policy.reason,
         wallet: policy.wallet
           ? {

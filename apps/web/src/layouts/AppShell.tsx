@@ -41,14 +41,10 @@ export function Logo({ compact }: { compact?: boolean }) {
 export function ModeBanner() {
   const { config } = useConfig();
   if (!config) return null;
-  if (config.chain.mode === 'mainnet' && config.deposits.accepting) return null;
-  const text =
-    config.chain.mode === 'sample'
-      ? 'SAMPLE MODE — simulated blockchain for development. No real funds are involved. Do not send real USDT to any address shown here.'
-      : config.chain.mode === 'sepolia'
-        ? 'TESTNET MODE (Sepolia) — test tokens only, no real value.'
-        : 'Real deposits are DISABLED on this platform. Do not send funds.';
-  return <div className="border-b border-orange-500/30 bg-orange-500/10 px-4 py-2 text-center text-xs font-medium text-orange-200">{text}</div>;
+  // No site-wide banner in demo/test or local modes; the deposit page carries a one-line note
+  // next to the demo address. Only shown on a mainnet deployment whose deposits are closed.
+  if (config.chain.mode !== 'mainnet' || config.deposits.accepting || config.deposits.localTest) return null;
+  return <div className="border-b border-orange-500/30 bg-orange-500/10 px-4 py-2 text-center text-xs font-medium text-orange-200">Deposits are not open on this platform. Do not send funds.</div>;
 }
 
 type NavItem = { to: string; label: string; icon: ReactNode; end?: boolean };

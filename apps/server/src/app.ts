@@ -5,7 +5,8 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { env, REPO_ROOT } from './config/env.js';
 import { csrfProtection, loadSession } from './auth/auth.js';
-import { apiLimiter, errorHandler, originCheck } from './middleware/http.js';
+import { apiLimiter, errorHandler, localOnlyGuard, originCheck } from './middleware/http.js';
+import { localRealTestActive } from './config/compliance.js';
 import { formatAmount } from './lib/money.js';
 import { authRouter } from './modules/auth.routes.js';
 import { userRouter } from './modules/user.routes.js';
@@ -18,6 +19,9 @@ export function createApp() {
   app.set('trust proxy', /^\d+$/.test(env.TRUST_PROXY) ? Number(env.TRUST_PROXY) : env.TRUST_PROXY);
   // All BigInt values in this API are USDT base units (6 decimals) → exact decimal strings.
   app.set('json replacer', (_k: string, v: unknown) => (typeof v === 'bigint' ? formatAmount(v) : v));
+
+  // Local real-money test mode: refuse anything that is not from this computer (checked per request).
+  app.use(localOnlyGuard(localRealTestActive));
 
   app.use(
     helmet({

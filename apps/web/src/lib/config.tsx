@@ -8,6 +8,8 @@ export interface PlatformConfig {
   deposits: {
     accepting: boolean;
     realFunds: boolean;
+    localTest?: boolean;
+    limits?: { maxDeposit: string; maxTotal: string } | null;
     reason: string | null;
     wallet: { label: string; provider: string; address: string; currency: string; network: string; chainId: number; isSample: boolean } | null;
   };

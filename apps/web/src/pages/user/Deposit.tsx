@@ -54,9 +54,7 @@ export function DepositPage() {
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="lg:col-span-3" title="Receiving address" subtitle={`${w!.currency} · Ethereum ERC-20 · chain id ${w!.chainId}`}>
             {w!.isSample && (
-              <Alert tone="warning" className="mb-4" title="Sample address — not a real wallet">
-                This address exists only on the simulated development chain. Never send real funds to it.
-              </Alert>
+              <p className="mb-3 text-xs text-slate-400">Demo address for testing — not for real USDT.</p>
             )}
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-lg bg-sky-500/10 px-2 py-1 text-xs font-semibold text-sky-300 ring-1 ring-sky-400/30">USDT</span>
@@ -84,6 +82,7 @@ export function DepositPage() {
               ))}
             </ol>
             <p className="mt-4 text-xs text-slate-500">Required confirmations: {config?.minConfirmations}</p>
+            {config?.deposits.limits && <p className="mt-1 text-xs text-slate-500">Maximum per deposit: {usdt(config.deposits.limits.maxDeposit)} USDT</p>}
           </Card>
 
           <Card className="lg:col-span-5" title="Submit your transaction hash">
