@@ -1,0 +1,17 @@
+{
+  "_comment": "TEMPLATE ONLY. Copy to compliance/attestation.json, complete every field with real, verified information, and have it signed off by an authorised officer and legal counsel. A placeholder or fabricated attestation defeats the purpose of the gate.",
+  "businessLegalName": "",
+  "jurisdictions": [""],
+  "licences": [{ "regulator": "", "licenceType": "", "licenceNumber": "" }],
+  "customerDueDiligence": { "kycProcedure": "", "provider": "" },
+  "amlCft": { "complianceOfficer": "", "policyDocument": "" },
+  "transactionMonitoring": "",
+  "sanctionsScreening": "",
+  "customerDisclosures": { "termsUrl": "", "riskDisclosureUrl": "" },
+  "safeguarding": "",
+  "recordRetention": "",
+  "legalCounsel": "",
+  "attestedBy": { "name": "", "title": "" },
+  "attestedAt": "2026-01-01T00:00:00Z",
+  "expiresAt": "2026-12-31T00:00:00Z"
+}

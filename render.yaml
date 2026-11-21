@@ -1,0 +1,46 @@
+# Render Blueprint — deploys ETH STALKING as one web service (API + built frontend on one URL).
+# Render dashboard → New → Blueprint → pick this repository → Apply.
+#
+# FREE PLAN NOTES
+# - The service sleeps after 15 min without visitors; the next visit takes ~1 min to wake it.
+# - The free filesystem is temporary: when it sleeps or redeploys, the SQLite database is recreated
+#   and re-seeded (accounts + plans come back, test deposits/balances are reset).
+# - For persistent data: change `plan: free` to `plan: starter` and uncomment the `disk` block.
+#
+# The app stays in SAMPLE (test) mode. Real customer deposits remain disabled by the compliance gate.
+services:
+  - type: web
+    name: eth-stalking
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build -w apps/web
+    startCommand: npm run db:migrate && npm run db:seed && npm run start -w apps/server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        value: file:../../../data/app.db
+      - key: CHAIN_MODE
+        value: sample
+      - key: CHAIN_ID
+        value: "31337"
+      - key: MIN_CONFIRMATIONS
+        value: "12"
+      - key: REAL_DEPOSITS_ENABLED
+        value: "false"
+      - key: MAINNET_CHECK_RPC_URL
+        value: https://ethereum-rpc.publicnode.com
+      # One password for all seeded accounts — Render generates it; read it in the
+      # service's Environment tab. Change it there any time (takes effect on a fresh database).
+      - key: SEED_PASSWORD
+        generateValue: true
+    # disk:
+    #   name: data
+    #   mountPath: /opt/render/project/src/data
+    #   sizeGB: 1

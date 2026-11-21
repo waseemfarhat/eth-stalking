@@ -1,0 +1,358 @@
+// ETH STALKING — database schema
+//
+// MONEY CONVENTION: every amount is a BigInt in the token's smallest unit.
+// USDT has 6 decimals, so 1 USDT = 1_000_000. Integers are exact on SQLite and PostgreSQL
+// (Prisma's Decimal on SQLite can lose precision), and conversion happens only at the API edge.
+//
+// String "enum" columns are validated in application code (src/lib/constants.ts) so the
+// schema stays portable between SQLite and PostgreSQL.
+//
+// IMMUTABILITY: LedgerEntry, Transaction and AuditLog are append-only. The init migration
+// installs SQLite triggers that ABORT any UPDATE or DELETE on those tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         String    @default("USER") // USER | ADMIN | SUPERADMIN
+  status       String    @default("ACTIVE") // ACTIVE | SUSPENDED
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions        Session[]
+  ledgerAccounts  LedgerAccount[]
+  deposits        Deposit[]        @relation("DepositUser")
+  reviewedDeposits Deposit[]       @relation("DepositReviewer")
+  withdrawals     Withdrawal[]     @relation("WithdrawalUser")
+  reviewedWithdrawals Withdrawal[] @relation("WithdrawalReviewer")
+  stakingRecords  StakingRecord[]  @relation("StakingUser")
+  reviewedStaking StakingRecord[]  @relation("StakingReviewer")
+  rewards         Reward[]         @relation("RewardUser")
+  allocatedRewards Reward[]        @relation("RewardAllocator")
+  reversedRewards Reward[]         @relation("RewardReverser")
+  transactions    Transaction[]    @relation("TransactionUser")
+  createdTransactions Transaction[] @relation("TransactionCreator")
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+  stakingPlans    StakingPlan[]
+  wallets         Wallet[]
+  settings        PlatformSetting[]
+}
+
+model Session {
+  id         String    @id // SHA-256 of the opaque cookie token; the raw token is never stored
+  userId     String
+  csrfToken  String
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Administrator-managed receiving wallet configuration. No secrets are ever stored here:
+// ownership is proven by an EIP-191 signed message, never by a key or recovery phrase.
+model Wallet {
+  id                   String    @id @default(cuid())
+  label                String
+  provider             String // e.g. "Bitget Wallet"
+  currency             String // USDT
+  network              String // ETHEREUM_ERC20
+  chainId              Int
+  address              String // lowercase hex
+  tokenContract        String // lowercase hex
+  purpose              String    @default("DEPOSIT_RECEIVING")
+  status               String    @default("UNVERIFIED") // UNVERIFIED | VERIFIED | DISABLED
+  isActive             Boolean   @default(false)
+  isSample             Boolean   @default(false)
+  ownershipChallenge   String?
+  ownershipSignature   String?
+  ownershipVerifiedAt  DateTime?
+  notes                String?
+  createdById          String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdBy            User?     @relation(fields: [createdById], references: [id])
+
+  blockchainTransactions BlockchainTransaction[]
+  deposits               Deposit[]
+
+  @@unique([chainId, address, currency])
+}
+
+// One row per verified ERC-20 Transfer log (a single tx can contain several transfers).
+model BlockchainTransaction {
+  id             String   @id @default(cuid())
+  chainId        Int
+  txHash         String // lowercase 0x + 64 hex
+  logIndex       Int
+  blockNumber    Int?
+  blockHash      String?
+  fromAddress    String
+  toAddress      String
+  tokenContract  String
+  amount         BigInt // token base units
+  status         String // PENDING | CONFIRMED | FAILED
+  confirmations  Int      @default(0)
+  source         String // USER_SUBMITTED | SCANNER | SAMPLE
+  isSample       Boolean  @default(false)
+  walletId       String?
+  verification   String // JSON snapshot of the last independent verification result
+  firstSeenAt    DateTime @default(now())
+  lastCheckedAt  DateTime @default(now())
+  wallet         Wallet?  @relation(fields: [walletId], references: [id])
+  deposit        Deposit?
+
+  @@unique([chainId, txHash, logIndex])
+  @@index([txHash])
+}
+
+model Deposit {
+  id                String    @id @default(cuid())
+  userId            String? // null = unmatched (detected by scanner, no account attributed yet)
+  walletId          String
+  blockchainTxId    String?   @unique // one deposit per on-chain transfer
+  chainId           Int
+  txHash            String
+  currency          String    @default("USDT")
+  network           String    @default("ETHEREUM_ERC20")
+  amount            BigInt? // known only after verification
+  status            String // SUBMITTED | AWAITING_VERIFICATION | AWAITING_CONFIRMATIONS | VERIFIED | UNDER_REVIEW | APPROVED | REJECTED
+  verificationError String?
+  isSample          Boolean   @default(false)
+  creditRef         String?   @unique // "<chainId>:<txHash>:<logIndex>" — set on approval; guarantees one credit per transfer
+  ledgerTxId        String?   @unique
+  reviewNote        String?
+  reviewedById      String?
+  reviewedAt        DateTime?
+  submittedAt       DateTime  @default(now())
+  verifiedAt        DateTime?
+  history           String    @default("[]") // JSON array of {status, at, by?, note?}
+  updatedAt         DateTime  @updatedAt
+
+  user           User?                  @relation("DepositUser", fields: [userId], references: [id])
+  reviewedBy     User?                  @relation("DepositReviewer", fields: [reviewedById], references: [id])
+  wallet         Wallet                 @relation(fields: [walletId], references: [id])
+  blockchainTx   BlockchainTransaction? @relation(fields: [blockchainTxId], references: [id])
+  ledgerTx       Transaction?           @relation("DepositLedgerTx", fields: [ledgerTxId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([txHash])
+}
+
+model Withdrawal {
+  id                 String    @id @default(cuid())
+  userId             String
+  currency           String
+  network            String
+  amount             BigInt
+  destinationAddress String
+  status             String // REQUESTED | APPROVED | PAYOUT_RECORDED | COMPLETED | REJECTED
+  reserveLedgerTxId  String?   @unique
+  releaseLedgerTxId  String?   @unique // payout settlement or rejection release
+  reviewedById       String?
+  reviewedAt         DateTime?
+  rejectionReason    String?
+  adminNote          String?
+  payoutTxHash       String?   @unique // a payout hash can settle exactly one withdrawal
+  payoutRecordedAt   DateTime?
+  payoutVerification String?
+  payoutVerifiedAt   DateTime?
+  completedAt        DateTime?
+  history            String    @default("[]")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user       User         @relation("WithdrawalUser", fields: [userId], references: [id])
+  reviewedBy User?        @relation("WithdrawalReviewer", fields: [reviewedById], references: [id])
+  reserveTx  Transaction? @relation("WithdrawalReserveTx", fields: [reserveLedgerTxId], references: [id])
+  releaseTx  Transaction? @relation("WithdrawalReleaseTx", fields: [releaseLedgerTxId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model StakingPlan {
+  id            String   @id @default(cuid())
+  name          String
+  description   String
+  currency      String   @default("USDT")
+  durationDays  Int
+  minAmount     BigInt
+  maxAmount     BigInt
+  indicativeRewardBps Int // indicative annualised rate in basis points — admin-discretionary, NOT guaranteed
+  rewardRule    String // human-readable description of how the administrator allocates rewards
+  status        String   @default("ACTIVE") // ACTIVE | INACTIVE
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     User     @relation(fields: [createdById], references: [id])
+  records       StakingRecord[]
+}
+
+model StakingRecord {
+  id             String    @id @default(cuid())
+  userId         String
+  planId         String
+  amount         BigInt
+  currency       String    @default("USDT")
+  status         String // REQUESTED | ACTIVE | REJECTED | ENDED
+  requestedAt    DateTime  @default(now())
+  reviewedById   String?
+  reviewedAt     DateTime?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  endedAt        DateTime?
+  note           String?
+  reserveLedgerTxId String? @unique
+  activateLedgerTxId String? @unique
+  releaseLedgerTxId String? @unique
+  history        String    @default("[]")
+  user           User      @relation("StakingUser", fields: [userId], references: [id])
+  reviewedBy     User?     @relation("StakingReviewer", fields: [reviewedById], references: [id])
+  plan           StakingPlan @relation(fields: [planId], references: [id])
+  rewards        Reward[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Reward {
+  id                 String    @id @default(cuid())
+  userId             String
+  stakingRecordId    String?
+  amount             BigInt
+  currency           String    @default("USDT")
+  description        String
+  rateBps            Int? // optional percentage the admin used to compute this allocation
+  status             String    @default("ALLOCATED") // ALLOCATED | REVERSED
+  allocatedById      String
+  allocatedAt        DateTime  @default(now())
+  ledgerTxId         String    @unique
+  reversedById       String?
+  reversedAt         DateTime?
+  reversalReason     String?
+  reversalLedgerTxId String?   @unique
+  user               User      @relation("RewardUser", fields: [userId], references: [id])
+  allocatedBy        User      @relation("RewardAllocator", fields: [allocatedById], references: [id])
+  reversedBy         User?     @relation("RewardReverser", fields: [reversedById], references: [id])
+  stakingRecord      StakingRecord? @relation(fields: [stakingRecordId], references: [id])
+  ledgerTx           Transaction @relation("RewardLedgerTx", fields: [ledgerTxId], references: [id])
+  reversalLedgerTx   Transaction? @relation("RewardReversalLedgerTx", fields: [reversalLedgerTxId], references: [id])
+
+  @@index([userId])
+}
+
+// Ledger account. Balances are a cache of SUM(LedgerEntry.amount) maintained only by the
+// ledger service inside the same database transaction that writes the entries.
+model LedgerAccount {
+  id        String   @id @default(cuid())
+  key       String   @unique // "USER:<userId>:<TYPE>:<CUR>" or "PLATFORM:<TYPE>:<CUR>"
+  ownerType String // USER | PLATFORM
+  userId    String?
+  type      String // USER: AVAILABLE | LOCKED | PENDING | STAKED ; PLATFORM: DEPOSIT_CLEARING | REWARD_FUNDING | ADJUSTMENTS | WITHDRAWAL_PAYOUTS
+  currency  String
+  balance   BigInt   @default(0)
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+  entries   LedgerEntry[]
+
+  @@index([userId])
+}
+
+// Journal header. Every money movement is exactly one Transaction whose entries sum to zero.
+model Transaction {
+  id          String   @id @default(cuid())
+  reference   String   @unique // idempotency key, e.g. "DEPOSIT_CREDIT:1:0xabc..:3"
+  type        String // DEPOSIT_CREDIT | ADMIN_CREDIT | ADMIN_DEBIT | ADMIN_LOCK | ADMIN_UNLOCK | STAKE_RESERVE | STAKE_ACTIVATE | STAKE_RELEASE | STAKE_REJECT | REWARD | REWARD_REVERSAL | WITHDRAWAL_RESERVE | WITHDRAWAL_RELEASE | WITHDRAWAL_PAYOUT
+  description String
+  currency    String
+  userId      String?
+  createdById String?
+  isSample    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  user        User?    @relation("TransactionUser", fields: [userId], references: [id])
+  createdBy   User?    @relation("TransactionCreator", fields: [createdById], references: [id])
+  entries     LedgerEntry[]
+
+  deposit              Deposit?      @relation("DepositLedgerTx")
+  withdrawalReserve    Withdrawal?   @relation("WithdrawalReserveTx")
+  withdrawalRelease    Withdrawal?   @relation("WithdrawalReleaseTx")
+  reward               Reward?       @relation("RewardLedgerTx")
+  rewardReversal       Reward?       @relation("RewardReversalLedgerTx")
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model LedgerEntry {
+  id            String   @id @default(cuid())
+  transactionId String
+  accountId     String
+  amount        BigInt // signed: + increases the account balance, − decreases it
+  balanceAfter  BigInt
+  createdAt     DateTime @default(now())
+  transaction   Transaction   @relation(fields: [transactionId], references: [id])
+  account       LedgerAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@index([transactionId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// Append-only, hash-chained audit trail. hash = SHA-256(prevHash + canonical row content).
+model AuditLog {
+  seq        Int      @id @default(autoincrement())
+  actorId    String?
+  actorRole  String?
+  action     String
+  entityType String
+  entityId   String?
+  details    String // JSON
+  ip         String?
+  prevHash   String
+  hash       String   @unique
+  createdAt  DateTime @default(now())
+  actor      User?    @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+}
+
+model PlatformSetting {
+  key         String   @id
+  value       String
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   User?    @relation(fields: [updatedById], references: [id])
+}

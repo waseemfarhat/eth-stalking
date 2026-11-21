@@ -1,0 +1,39 @@
+{
+  "name": "eth-stalking",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ETH STALKING \u2014 USDT deposit verification, internal ledger, admin-managed staking records and rewards (local development build)",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "setup": "npm install && npm run db:migrate && npm run db:seed",
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "npm run dev -w apps/server",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web && npm run typecheck -w apps/server",
+    "start": "npm run build -w apps/web && npm run start -w apps/server",
+    "test": "npm run test -w apps/server",
+    "test:live": "npm run test:live -w apps/server",
+    "typecheck": "npm run typecheck -w apps/server && npm run typecheck -w apps/web",
+    "db:migrate": "npm run db:migrate -w apps/server",
+    "db:seed": "npm run db:seed -w apps/server",
+    "db:reset": "npm run db:reset -w apps/server",
+    "db:backup": "npm run db:backup -w apps/server",
+    "db:restore": "npm run db:restore -w apps/server --",
+    "db:export": "npm run db:export -w apps/server",
+    "db:import": "npm run db:import -w apps/server --",
+    "host": "node scripts/host.mjs",
+    "db:rotate-passwords": "npm run db:rotate-passwords -w apps/server"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "prisma@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.2": true
+  }
+}

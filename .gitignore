@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/*
+!data/.gitkeep
+backups/*
+!backups/.gitkeep
+exports/*
+!exports/.gitkeep
+compliance/attestation.json
+coverage/
+.vite/
+apps/server/tests/.tmp/
